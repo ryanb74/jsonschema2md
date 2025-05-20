@@ -81,10 +81,16 @@ print(''.join(md_lines))
 
 ### Options
 
-- `examples-as-yaml`: Parse examples in YAML-format instead of JSON. (`bool`, default:
+- `examples_as_yaml`: Parse examples in YAML-format instead of JSON. (`bool`, default:
   `False`)
-- `show-examples`: Parse examples for only the main object, only properties, or all.
+- `show_examples`: Parse examples for only the main object, only properties, or all.
   (`str`, default `all`, options: `object`, `properties`, `all`)
+- `show_deprecated`: Show deprecated properties. (`bool`, default: `True`)
+- `collapse_children`: Collapse object children into a `<details>` element (`bool`, default:
+  `False`)
+- `header_level`: Base header level for the generated markdown. (`int`, default: `0`)
+- `ignore_patterns`: List of regex patterns to ignore when parsing the schema. (`list of
+str`, default: `None`)
 
 ## pre-commit hook
 
@@ -118,6 +124,12 @@ pip install pre-commit
 pre-commit install --allow-missing-config
 ```
 
-## Changelog
+## Showcase
 
-See [Changelog.md](https://github.com/sbrunner/jsonschema2md/blob/master/CHANGELOG.md).
+- [PrairieLearn's `infoCourse.json`](https://prairielearn.readthedocs.io/en/latest/schemas/infoCourse/), [source code](https://github.com/PrairieLearn/PrairieLearn/blob/ab1e0f1fc837a8da9cde3448eb785958ac42e309/docs/scripts/gen_jsonschemas.py).
+
+## Related projects:
+
+- [json-schema-for-humans](https://github.com/coveooss/json-schema-for-humans)
+- [jsonschema-markdown](https://github.com/elisiariocouto/jsonschema-markdown)
+- [adobe/jsonschema2md](https://github.com/adobe/jsonschema2md)
