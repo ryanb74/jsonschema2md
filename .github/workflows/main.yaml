@@ -9,21 +9,30 @@ on:
       - '*'
   pull_request:
 
+permissions:
+  contents: write
+  id-token: write
+
 env:
   HAS_SECRETS: ${{ secrets.HAS_SECRETS }}
 
 jobs:
   pre-commit:
     name: Pre-commit
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: "!startsWith(github.event.head_commit.message, '[skip ci] ')"
+
+    outputs:
+      success: ${{ steps.success.outputs.success }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - run: echo "${HOME}/.local/bin" >> ${GITHUB_PATH}
-      - run: python3 -m pip install --user --requirement=ci/requirements.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python3 -m pip install --requirement=ci/requirements.txt
       - run: pip install --editable=.
 
       - uses: actions/cache@v4
@@ -31,8 +40,8 @@ jobs:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: "pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}\npre-commit-"
-      - run: pre-commit run --all-files
-      - run: git diff --exit-code --patch > /tmp/pre-commit.patch || true
+      - run: pre-commit run --all-files --color=always
+      - run: git diff --exit-code --patch > /tmp/pre-commit.patch; git diff --color; git reset --hard || true
         if: failure()
 
       - uses: actions/upload-artifact@v4
@@ -41,9 +50,13 @@ jobs:
           path: /tmp/pre-commit.patch
           retention-days: 1
         if: failure()
+
+      - id: success
+        run: echo "::set-output name=success::true"
+
   main:
     name: Continuous integration
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     if: "!startsWith(github.event.head_commit.message, '[skip ci] ')"
 
@@ -55,15 +68,16 @@ jobs:
           - '3.10'
           - '3.11'
 
+    outputs:
+      success: ${{ steps.success.outputs.success }}
+
     steps:
       - uses: actions/checkout@v4
-
-      - run: echo "${HOME}/.local/bin" >> ${GITHUB_PATH}
-      - run: python3 -m pip install --user --requirement=ci/requirements.txt
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - run: python3 -m pip install --requirement=ci/requirements.txt
 
       - name: Install with Poetry
         run: poetry install
@@ -76,20 +90,28 @@ jobs:
         run: |
           poetry run pytest tests -vv
 
+      - id: success
+        run: echo "::set-output name=success::true"
+
   publish:
     name: Publish
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
-    if: "!startsWith(github.event.head_commit.message, '[skip ci] ')"
+    if: always()
     needs:
       - pre-commit
       - main
 
     steps:
+      - run: "[[ ${{ needs.pre-commit.outputs.success }} == 'true' ]]"
+      - run: "[[ ${{ needs.main.outputs.success }} == 'true' ]]"
+
       - uses: actions/checkout@v4
 
-      - run: echo "${HOME}/.local/bin" >> ${GITHUB_PATH}
-      - run: python3 -m pip install --user --requirement=ci/requirements.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python3 -m pip install --requirement=ci/requirements.txt
 
       - name: Init pypi
         run: |-
@@ -98,11 +120,11 @@ jobs:
           echo "password = ${{ secrets.PYPI_PASSWORD }}" >> ~/.pypirc
         if: env.HAS_SECRETS == 'HAS_SECRETS'
       - name: Publish
-        run: c2cciutils-publish
+        run: tag-publish
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
-        if: env.HAS_SECRETS == 'HAS_SECRETS' && matrix.python-version == '3.9'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: env.HAS_SECRETS == 'HAS_SECRETS'
       - run: |
           sed --in-place 's/jsonschema2md/jsonschema2md2/g' pyproject.toml
           sed --in-place 's@sbrunner/jsonschema2md2@sbrunner/jsonschema2md@g' pyproject.toml
@@ -110,8 +132,16 @@ jobs:
           git diff
           mv jsonschema2md jsonschema2md2
       - name: Publish
-        run: c2cciutils-publish
+        run: tag-publish
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
-        if: env.HAS_SECRETS == 'HAS_SECRETS' && matrix.python-version == '3.9'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: env.HAS_SECRETS == 'HAS_SECRETS'
+      - run: git diff --exit-code --patch > /tmp/dpkg-versions.patch; git diff --color; git reset --hard || true
+        if: failure()
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Update dpkg versions list.patch
+          path: /tmp/dpkg-versions.patch
+          retention-days: 1
+        if: failure()
